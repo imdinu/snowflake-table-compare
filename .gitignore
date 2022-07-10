@@ -1,0 +1,5 @@
+*.txt
+.credentials.json
+*.csv
+*.ipynb
+*.DS_store
