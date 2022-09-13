@@ -1,5 +1,7 @@
-*.txt
+*.log
 .credentials.json
 *.csv
 *.ipynb
 *.DS_store
+*_backup*
+*.pyc

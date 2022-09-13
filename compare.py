@@ -5,7 +5,8 @@ from argparse import ArgumentParser
 
 import pandas as pd
 
-from helpers.query import snowflake_connector, exec_from_string
+from helpers.snowflake import snowflake_connector, exec_from_string
+from helpers.query import * 
 
 def escape_ansi(line):
     ansi_escape = re.compile(r'(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]')
@@ -16,9 +17,9 @@ def dprint(*args, file=None, **kwargs):
     if file:
         for s in args:
             file.write(escape_ansi(s) if isinstance(s, str) else escape_ansi(repr(s)))
-            if "sep" in kwargs.keys():
+            if "sep" in kwargs:
                 file.write(kwargs["sep"])
-        if "end" in kwargs.keys():
+        if "end" in kwargs:
             file.write(kwargs["end"])
         else: 
             file.write("\n")
@@ -34,124 +35,109 @@ if __name__ == "__main__":
     parser.add_argument("-W","--warehouse", action="store", type=str, default=None,
                     help="name of the data warehouse where the tables reside")
     parser.add_argument("--credentials", action="store", type=str, 
-                    default="./example.credentials.json",
+                    default="./default.credentials.json",
                     help="file with the snowflake connection credentials")
     parser.add_argument("--outfile", action="store", type=str, default=None,
                     help="filename to redirect stdout output")
     parser.add_argument("--save-csv", action="store_true", default=False,
-                    help="save table data as csv")
-    parser.add_argument("--no-download", action="store_true", default=False,
-                help="attempts to use previously downloaded csv files if available")
+                    help="save detailed matching data as csv")
 
     args = parser.parse_args()
 
     if ";" in args.reference or ";" in args.target:
         raise ValueError("Character ';' not allowed in table names")
 
+    # ctx = snowflake_connector(path_credentials="./.credentials.json")
     ctx = snowflake_connector(path_credentials=args.credentials)
     cs = ctx.cursor()
 
     if args.warehouse:
         if ";" in args.warehouse:
             raise ValueError("Character ';' not allowed in warehouse name")
-        cs.execute(f"USE WAREHOUSE {args.warehouse};")  
-
-    if args.no_download:
-        if os.path.exists(f"{args.reference}.csv"):
-            print(f"Found existing file '{args.reference}.csv'")
-            df_reference = pd.read_csv(f"{args.reference}.csv")
-        else:
-            query_ref = f"SELECT * FROM {args.reference}"
-            df_reference = exec_from_string(cs, query_ref)
-
-        if os.path.exists(f"{args.target}.csv"):
-            print(f"Found existing file '{args.target}.csv'")
-            df_target = pd.read_csv(f"{args.target}.csv")
-        else:
-            query_target = f"SELECT * FROM {args.target}"
-            df_target = exec_from_string(cs, query_target)
-    else:
-        query_ref = f"SELECT * FROM {args.reference}"
-        df_reference = exec_from_string(cs, query_ref)
-        query_target = f"SELECT * FROM {args.target}"
-        df_target = exec_from_string(cs, query_target)
-    cs.close()
+        cs.execute(f"use warehouse {args.warehouse};")  
 
     f = open(f"{args.outfile}", "w") if args.outfile is not None else None
-    if args.save_csv:
-        df_reference.to_csv(f"{args.reference}.csv", index=False)
-        df_target.to_csv(f"{args.target}.csv", index=False)
-    counts_ref = [df_reference.shape[0], 
-                f"{100*(df_target.shape[0]-df_reference.shape[0])/df_reference.shape[0]:.3f}%", 
-                df_reference.shape[1],
-                df_reference.shape[1] - df_target.shape[1]]
-    counts_target= [df_target.shape[0], 
-                f"{100*(df_reference.shape[0]-df_target.shape[0])/df_target.shape[0]:.3f}%", 
-                df_target.shape[1],
-                df_target.shape[1] - df_reference.shape[1]]
-    data_counts = {args.reference: counts_ref, args.target: counts_target}
-    df_counts = pd.DataFrame.from_dict(data_counts, orient='index',
-                        columns=['N Rows', 'Rows %Diff', 'N Columns', 'Cols Diff'])
+
+    c1 = get_table_columns(cs, args.reference)
+    c2 = get_table_columns(cs, args.target)
+    r1, r2 = get_row_numbers(cs, args.reference, args.target)
+
+    c_inter = c1.intersection(c2)
+    c_union = c1.union(c2)
     dprint("\n\t\t", colored("DATA COUNTS", "green"), "\t\t", file=f)
-    dprint(df_counts, file=f)
 
-    dprint("\n\t\t", colored("COLUMN COMPOSITION", "green"), "\t\t", file=f)
-    dprint(colored("Common columns:", "cyan"), end=" ", file=f)
-    common_columns = set(df_target.columns).intersection(set(df_reference.columns))
-    dprint(*common_columns, sep=", ", file=f)
-    unique_ref = set(df_target.columns) - set(df_reference.columns)
-    unique_target = set(df_reference.columns) - set(df_target.columns)
-    if unique_ref:
-        dprint(colored(f"Columns unique to {args.reference}:", "cyan"), end=" ", file=f)
-        dprint(*unique_ref, sep=", ", file=f)
-    else:
-         dprint(colored(f"No columns unique to {args.reference}.", "cyan"), file=f)
-    if unique_target:
-        dprint(colored(f"Columns unique to {args.target}:", "cyan"), end=" ", file=f)
-        dprint(*unique_target, sep=", ", file=f)
-    else:
-         dprint(colored(f"No columns unique to {args.target}.", "cyan"), file=f)
+    dprint(colored(f"{len(c_inter)}/{len(c1)}", "cyan"), 
+            "column names common between tables", file=f)
+    dprint("Missing columns:", *[colored(f"{c}", "red") 
+                    for c in (c1-c_inter)], file=f)
+    dprint(f"{args.reference} row count: ", colored(f"{r1}", "cyan"), file=f)
+    dprint(f"{args.target} row count: ", colored(f"{r2}", "cyan"), file=f)
+    dprint("Row counts difference: ", colored(f"{abs(r1-r2)}", "red"), file=f)
 
-    if args.key:
-        args.key = str.upper(args.key)
-        if args.key not in common_columns:
-            raise ValueError("Key is not in common columns")
+    dprint("\n\t\t", colored("COLUMN MATCH", "green"), "\t\t", file=f)
 
-        common_rows = set(df_reference[args.key].values.flatten().tolist())\
-            .intersection(set(df_target[args.key].values.flatten().tolist()))
+    ids_match = get_table_keys(cs, args.reference, args.target, args.key)
+    cols = c_inter - {args.key}
+    df = get_column_matches(cs, args.reference, args.target, args.key, cols)
+    cols_matches = df[list(cols)].sum(axis=0) *100/len(ids_match)
+    cols_df = pd.DataFrame(cols_matches.sort_values(ascending=False))
 
-        dprint("\n\t\t", colored("ROW MATCHING", "green"), "\t\t", file=f)
-        dprint("Matching by ID: ", colored(f"{args.key}", "red"), file=f)
-        dprint(colored(f"Common rows count {args.reference}\t", "cyan"),
-                f"{len(common_rows)}/{df_reference.shape[0]}\t",
-                f"{100*len(common_rows)/df_reference.shape[0]:.3f}%", file=f)
-        dprint(colored(f"Common rows count {args.target}\t", "cyan"),
-                f"{len(common_rows)}/{df_target.shape[0]}\t",
-                f"{100*len(common_rows)/df_target.shape[0]:.3f}%", file=f)
+    dprint(colored(f"{len(ids_match)}/{r1}", "green"), " matches on ", 
+        colored(f"{args.key.upper()} ", "cyan"),
+        colored(f"= {100*len(ids_match)/r1:.2f} %", "green"), file=f)
+    dprint(cols_df, file=f)
+    dprint("\n", colored(f"{cols_matches.mean():.3f} %", "green"), 
+            " overall match", file=f)
 
-        df_reference = df_reference[df_reference[args.key].isin(common_rows)].fillna(0)
-        df_target = df_target[df_target[args.key].isin(common_rows)].fillna(0)
+    if args.save_csv:
+        filename = f"{args.target.split('.')[-1]}.csv"
+        df.to_csv(filename, sep=";")
 
-        df_reference = df_reference.sort_values(by=args.key).reset_index(drop=True)
-        df_target = df_target.sort_values(by=args.key).reset_index(drop=True)
+    # dprint(df_counts, file=f)
 
-        comparison = df_reference.compare(df_target, keep_shape=True)
-        comparison = comparison.T.xs("self", level=1).T
+    # dprint("\n\t\t", colored("COLUMN COMPOSITION", "green"), "\t\t", file=f)
+    # dprint(colored("Common columns:", "cyan"), end=" ", file=f)
+    # cs.close()
 
-        results = pd.DataFrame(comparison.isnull().sum(axis=0)).T * 100 / df_reference.shape[0]
-        results = results.T.reset_index()
-        results.columns = ["Column", "% value match"]
+    # schema1 = "pc_alooma_db.analytics"
+    # schema2 = "intedasol.analytics"
 
-        dprint("\n\t\t", colored("INDIVIDUAL VALUE MATCHING", "green"), "\t\t", file=f)
-        dprint(results, file=f)
+    # out1 = get_schema_tables(cs, schema1)
+    # out2 = get_schema_tables(cs, schema2)
 
-        compound_score = (len(common_rows)/df_counts.iloc[1,0])*\
-                         (len(common_columns)/len(df_target.columns))*\
-                         results["% value match"].mean()
-        dprint("\n\t\t", colored("COMPOUND MATCH SCORE: ", "green"), 
-                colored(f"{compound_score:.2f}%", "red"), "\t\t", file=f)
+    # inter = out1.intersection(out2)
+    # union = out1.union(out2)
 
-    if args.outfile:
-        f.close()
+    # print(f"{len(inter)}/{len(union)} tables found in both schemas")
 
+    # table1 = "pc_alooma_db.analytics.account"
+    # table2 = "intedasol.analytics.account"
+
+    # c1 = get_table_columns(cs, table1)
+    # c2 = get_table_columns(cs, table2)
+    # r1, r2 = get_row_numbers(cs, table1, table2)
+
+    # c_inter = c1.intersection(c2)
+    # c_union = c1.union(c2)
+    # print(f"{len(c_inter)}/{len(c_union)} column names common between tables")
+    # print("Missing columns:", *(c_union-c_inter))
+    # print(f"{table1} row count: {r1}")
+    # print(f"{table2} row count: {r2}")
+    # print(f"row counts difference: {abs(r1-r2)}")
+
+    # primary_key = "SFDCID"
+
+    # ids_match = get_table_keys(cs, table1, table2, primary_key)
+
+    # print(f"{len(ids_match)}/{r1} matches on {primary_key.upper()} "
+    #     f"= {100*len(ids_match)/r1:.2f} %")
+
+    # cols = c_inter - {primary_key}
+
+    # df = get_column_matches(cs, table1, table2, primary_key, cols)
+
+    # print(100/len(ids_match))
+    # cols_matches = df[list(cols)].sum(axis=0) *100/len(ids_match)
+    # print(cols_matches.sort_values(ascending=False))
+    # print(cols_matches.mean())
 

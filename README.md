@@ -9,7 +9,7 @@ You just need to have **python 3+** installed and then install the required libr
 $ pip install -r requirements.txt
 ```
 
-Lastly, change the content of [example.credentials.json](example.credentials.json) to reflect your Snowflake login information 
+Lastly, change the content of [default.credentials.json](default.credentials.json) to reflect your Snowflake login information 
 
 ## Running the comparison
 

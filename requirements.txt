@@ -1,0 +1,6 @@
+pandas==1.4.1
+numpy==1.22.2
+snowflake_connector_python==2.7.4
+termcolor==1.1.0
+tqdm==4.63.0
+pyarrow==6.0.1
