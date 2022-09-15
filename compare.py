@@ -85,7 +85,7 @@ if __name__ == "__main__":
     dprint(colored(f"{len(ids_match)}/{r1}", "green"), " matches on ", 
         colored(f"{args.key.upper()} ", "cyan"),
         colored(f"= {100*len(ids_match)/r1:.2f} %", "green"), file=f)
-    dprint(cols_df, file=f)
+    dprint(cols_df.to_string(), file=f)
     dprint("\n", colored(f"{cols_matches.mean():.3f} %", "green"), 
             " overall match", file=f)
 
