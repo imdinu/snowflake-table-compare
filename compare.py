@@ -68,6 +68,8 @@ if __name__ == "__main__":
 
     dprint(colored(f"{len(c_inter)}/{len(c1)}", "cyan"), 
             "column names common between tables", file=f)
+    # dprint("Found columns:", *[colored(f"{c}", "green") 
+    #             for c in c_inter], file=f)
     dprint("Missing columns:", *[colored(f"{c}", "red") 
                     for c in (c1-c_inter)], file=f)
     dprint(f"{args.reference} row count: ", colored(f"{r1}", "cyan"), file=f)
@@ -77,14 +79,22 @@ if __name__ == "__main__":
     dprint("\n\t\t", colored("COLUMN MATCH", "green"), "\t\t", file=f)
 
     ids_match = get_table_keys(cs, args.reference, args.target, args.key)
-    cols = c_inter - {args.key}
+    cols = c_inter - {args.key.upper()}
     df = get_column_matches(cs, args.reference, args.target, args.key, cols)
-    cols_matches = df[list(cols)].sum(axis=0) *100/len(ids_match)
+    cols_matches = df[list(cols)].sum(axis=0) *100/df.shape[0]
     cols_df = pd.DataFrame(cols_matches.sort_values(ascending=False))
+    cols_df = cols_df.rename(columns={0: "Match %"})
 
+    ndupes = get_duplicate_keys(cs, args.target, args.key)
     dprint(colored(f"{len(ids_match)}/{r1}", "green"), " matches on ", 
         colored(f"{args.key.upper()} ", "cyan"),
         colored(f"= {100*len(ids_match)/r1:.2f} %", "green"), file=f)
+    if ndupes > 0:
+        dprint(colored(f"{ndupes}/{r2}", "red"), " duplicates on ", 
+            colored(f"{args.key.upper()} ", "cyan"),
+            colored(f"= {100*ndupes/r2:.2f} %", "red"), file=f)
+    else:
+        dprint(colored("No duplicates ", "green"), "of ", colored(f"{args.key.upper()} ", "cyan"))
     dprint(cols_df.to_string(), file=f)
     dprint("\n", colored(f"{cols_matches.mean():.3f} %", "green"), 
             " overall match", file=f)

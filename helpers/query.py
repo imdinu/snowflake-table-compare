@@ -34,14 +34,23 @@ def get_row_numbers(cursor, table1, table2):
 
 def get_table_keys(cursor, table1, table2, key):
     query = "select t1.{key} from {table1} t1 "\
-            "inner join {table1} t2 on t1.{key}=t2.{key}"
+            "inner join {table2} t2 on t1.{key}=t2.{key}"
     replacement = {"table1": table1, "table2": table2, "key": key}
     query = query.format(**replacement)
 
     return set(exec_from_string(cursor, query, quiet=True).iloc[:,0].to_list())
 
+def get_duplicate_keys(cursor, table, key):
+    query = "select {key} from {table};"
+    replacement = {"table": table, "key": key}
+    query = query.format(**replacement)
+    keys = exec_from_string(cursor, query, quiet=True).iloc[:,0].to_list()
+    ukeys = set(keys)
+    # print(len(keys), len(ukeys))
+    return len(keys) - len(ukeys)
+
 def get_column_matches(cs, table1, table2, key, columns):
-    start = "select t1.{key}".format(key=key)
+    start = "select distinct t1.{key}".format(key=key)
     end = " from {table1} t1 "\
         "inner join {table2} t2 "\
         "on t1.{key} = t2.{key};"
