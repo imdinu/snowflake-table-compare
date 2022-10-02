@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import os
 import re
 from termcolor import colored
@@ -23,6 +25,55 @@ def dprint(*args, file=None, **kwargs):
             file.write(kwargs["end"])
         else: 
             file.write("\n")
+
+def compare_tables(cs, reference, target, key, outfile, save_csv):
+    c1 = get_table_columns(cs, reference)
+    c2 = get_table_columns(cs, target)
+    r1, r2 = get_row_numbers(cs, reference, target)
+
+    c_inter = c1.intersection(c2)
+    c_union = c1.union(c2)
+    dprint("\n\t\t", colored("DATA COUNTS", "green"), "\t\t", file=outfile)
+
+    dprint(colored(f"{len(c_inter)}/{len(c1)}", "cyan"), 
+            "column names common between tables", file=outfile)
+    # dprint("Found columns:", *[colored(f"{c}", "green") 
+    #             for c in c_inter], file=outfile)
+    dprint("Missing columns:", *[colored(f"{c}", "red") 
+                    for c in (c1-c_inter)], file=outfile)
+    dprint(f"{reference} row count: ", colored(f"{r1}", "cyan"), file=outfile)
+    dprint(f"{target} row count: ", colored(f"{r2}", "cyan"), file=outfile)
+    dprint("Row counts difference: ", colored(f"{abs(r1-r2)}", "red"), file=outfile)
+
+    dprint("\n\t\t", colored("COLUMN MATCH", "green"), "\t\t", file=outfile)
+
+    ids_match = get_table_keys(cs, reference, target, key)
+    cols = c_inter - {key.upper()}
+    df = get_column_matches(cs, reference, target, key, cols)
+    cols_matches = df[list(cols)].sum(axis=0) *100/df.shape[0]
+    miss_matches = df.shape[0] - df[list(cols)].sum(axis=0)
+    cols_df = pd.DataFrame([miss_matches, cols_matches]).T#.sort_values(ascending=False)
+    cols_df = cols_df.astype({0:"int", 1: "float"})
+    cols_df = cols_df.sort_values(by=0).rename(columns={0:"Missmatched Records", 1: "Match %"})
+    cols_df = cols_df.rename(columns={0:"Missmatched Records", 1: "Match %"})
+
+    ndupes = get_duplicate_keys(cs, target, key)
+    dprint(colored(f"{len(ids_match)}/{r1}", "green"), " matches on ", 
+        colored(f"{key.upper()} ", "cyan"),
+        colored(f"= {100*len(ids_match)/r1:.2f} %", "green"), file=outfile)
+    if ndupes > 0:
+        dprint(colored(f"{ndupes}/{r2}", "red"), " duplicates on ", 
+            colored(f"{key.upper()} ", "cyan"),
+            colored(f"= {100*ndupes/r2:.2f} %", "red"), file=outfile)
+    else:
+        dprint(colored("No duplicates ", "green"), "of ", colored(f"{key.upper()} ", "cyan"))
+    dprint(cols_df.to_string(), file=outfile)
+    dprint("\n", colored(f"{cols_matches.mean():.3f} %", "green"), 
+            " overall match", file=outfile)
+
+    if save_csv:
+        filename = f"{target.split('.')[-1]}.csv"
+        df.to_csv(filename, sep=";")
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Compare two snowflake tables")
@@ -58,51 +109,8 @@ if __name__ == "__main__":
 
     f = open(f"{args.outfile}", "w") if args.outfile is not None else None
 
-    c1 = get_table_columns(cs, args.reference)
-    c2 = get_table_columns(cs, args.target)
-    r1, r2 = get_row_numbers(cs, args.reference, args.target)
-
-    c_inter = c1.intersection(c2)
-    c_union = c1.union(c2)
-    dprint("\n\t\t", colored("DATA COUNTS", "green"), "\t\t", file=f)
-
-    dprint(colored(f"{len(c_inter)}/{len(c1)}", "cyan"), 
-            "column names common between tables", file=f)
-    # dprint("Found columns:", *[colored(f"{c}", "green") 
-    #             for c in c_inter], file=f)
-    dprint("Missing columns:", *[colored(f"{c}", "red") 
-                    for c in (c1-c_inter)], file=f)
-    dprint(f"{args.reference} row count: ", colored(f"{r1}", "cyan"), file=f)
-    dprint(f"{args.target} row count: ", colored(f"{r2}", "cyan"), file=f)
-    dprint("Row counts difference: ", colored(f"{abs(r1-r2)}", "red"), file=f)
-
-    dprint("\n\t\t", colored("COLUMN MATCH", "green"), "\t\t", file=f)
-
-    ids_match = get_table_keys(cs, args.reference, args.target, args.key)
-    cols = c_inter - {args.key.upper()}
-    df = get_column_matches(cs, args.reference, args.target, args.key, cols)
-    cols_matches = df[list(cols)].sum(axis=0) *100/df.shape[0]
-    cols_df = pd.DataFrame(cols_matches.sort_values(ascending=False))
-    cols_df = cols_df.rename(columns={0: "Match %"})
-
-    ndupes = get_duplicate_keys(cs, args.target, args.key)
-    dprint(colored(f"{len(ids_match)}/{r1}", "green"), " matches on ", 
-        colored(f"{args.key.upper()} ", "cyan"),
-        colored(f"= {100*len(ids_match)/r1:.2f} %", "green"), file=f)
-    if ndupes > 0:
-        dprint(colored(f"{ndupes}/{r2}", "red"), " duplicates on ", 
-            colored(f"{args.key.upper()} ", "cyan"),
-            colored(f"= {100*ndupes/r2:.2f} %", "red"), file=f)
-    else:
-        dprint(colored("No duplicates ", "green"), "of ", colored(f"{args.key.upper()} ", "cyan"))
-    dprint(cols_df.to_string(), file=f)
-    dprint("\n", colored(f"{cols_matches.mean():.3f} %", "green"), 
-            " overall match", file=f)
-
-    if args.save_csv:
-        filename = f"{args.target.split('.')[-1]}.csv"
-        df.to_csv(filename, sep=";")
-
+    compare_tables(cs, args.reference, args.target, args.key, f, args.save_csv)
+   
     # dprint(df_counts, file=f)
 
     # dprint("\n\t\t", colored("COLUMN COMPOSITION", "green"), "\t\t", file=f)
