@@ -22,3 +22,10 @@ There are additional options for comparison that you may consult using
 ```sh
 python compare.py --help
 ```
+
+## Bulk comparison
+
+Having prepared a csv file with columns for source target and primary key information, run:
+```sh
+$ python bulk_compare.py <tables csv file> 
+```
