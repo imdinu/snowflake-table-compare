@@ -47,8 +47,10 @@ def compare_tables(cs, reference, target, key, outfile, save_csv):
 
     dprint("\n\t\t", colored("COLUMN MATCH", "green"), "\t\t", file=outfile)
 
+    key = [k.upper() for k in key] if isinstance(key, list) else key.upper()
     ids_match = get_table_keys(cs, reference, target, key)
-    cols = c_inter - {key.upper()}
+    cols = c_inter - set(key) if isinstance(key, list) else {key}
+
     df = get_column_matches(cs, reference, target, key, cols)
     cols_matches = df[list(cols)].sum(axis=0) *100/df.shape[0]
     miss_matches = df.shape[0] - df[list(cols)].sum(axis=0)
@@ -59,14 +61,14 @@ def compare_tables(cs, reference, target, key, outfile, save_csv):
 
     ndupes = get_duplicate_keys(cs, target, key)
     dprint(colored(f"{len(ids_match)}/{r1}", "green"), " matches on ", 
-        colored(f"{key.upper()} ", "cyan"),
+        colored(f"{key} ", "cyan"),
         colored(f"= {100*len(ids_match)/r1:.2f} %", "green"), file=outfile)
     if ndupes > 0:
         dprint(colored(f"{ndupes}/{r2}", "red"), " duplicates on ", 
-            colored(f"{key.upper()} ", "cyan"),
+            colored(f"{key} ", "cyan"),
             colored(f"= {100*ndupes/r2:.2f} %", "red"), file=outfile)
     else:
-        dprint(colored("No duplicates ", "green"), "of ", colored(f"{key.upper()} ", "cyan"))
+        dprint(colored("No duplicates ", "green"), "of ", colored(f"{key} ", "cyan"))
     dprint(cols_df.to_string(), file=outfile)
     dprint("\n", colored(f"{cols_matches.mean():.3f} %", "green"), 
             " overall match", file=outfile)
@@ -82,7 +84,8 @@ if __name__ == "__main__":
     parser.add_argument("target", action="store", type=str, default=None,
                     help="target table for comparison")
     parser.add_argument("-K", "--key", action="store", type=str, default=None,
-                    help="column name of unique row id (primary key)")
+                    nargs="+",
+                    help="column name(s) of unique row id(s) (primary key)")
     parser.add_argument("-W","--warehouse", action="store", type=str, default=None,
                     help="name of the data warehouse where the tables reside")
     parser.add_argument("--credentials", action="store", type=str, 
@@ -109,6 +112,7 @@ if __name__ == "__main__":
 
     f = open(f"{args.outfile}", "w") if args.outfile is not None else None
 
+    # print(args.key, type(args.key))
     compare_tables(cs, args.reference, args.target, args.key, f, args.save_csv)
    
     # dprint(df_counts, file=f)

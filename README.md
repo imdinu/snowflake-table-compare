@@ -15,7 +15,7 @@ Lastly, change the content of [default.credentials.json](default.credentials.jso
 
 From the terminal do:
 ```sh
-$ python compare.py <reference table> <target table> --key <primary key>
+$ python compare.py <reference table> <target table> --key <primary key or space separated list of keys>
 ```
 
 There are additional options for comparison that you may consult using 
