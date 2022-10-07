@@ -49,7 +49,7 @@ def compare_tables(cs, reference, target, key, outfile, save_csv):
 
     key = [k.upper() for k in key] if isinstance(key, list) else key.upper()
     ids_match = get_table_keys(cs, reference, target, key)
-    cols = c_inter - set(key) if isinstance(key, list) else {key}
+    cols = c_inter - (set(key) if isinstance(key, list) else {key})
 
     df = get_column_matches(cs, reference, target, key, cols)
     cols_matches = df[list(cols)].sum(axis=0) *100/df.shape[0]
@@ -101,8 +101,8 @@ if __name__ == "__main__":
     if ";" in args.reference or ";" in args.target:
         raise ValueError("Character ';' not allowed in table names")
 
-    # ctx = snowflake_connector(path_credentials="./.credentials.json")
-    ctx = snowflake_connector(path_credentials=args.credentials)
+    ctx = snowflake_connector(path_credentials="./.credentials.json")
+    # ctx = snowflake_connector(path_credentials=args.credentials)
     cs = ctx.cursor()
 
     if args.warehouse:
@@ -113,6 +113,8 @@ if __name__ == "__main__":
     f = open(f"{args.outfile}", "w") if args.outfile is not None else None
 
     # print(args.key, type(args.key))
+    if len(args.key) == 1:
+        args.key = args.key[0]
     compare_tables(cs, args.reference, args.target, args.key, f, args.save_csv)
    
     # dprint(df_counts, file=f)
