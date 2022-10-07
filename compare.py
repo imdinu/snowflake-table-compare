@@ -101,8 +101,8 @@ if __name__ == "__main__":
     if ";" in args.reference or ";" in args.target:
         raise ValueError("Character ';' not allowed in table names")
 
-    ctx = snowflake_connector(path_credentials="./.credentials.json")
-    # ctx = snowflake_connector(path_credentials=args.credentials)
+    # ctx = snowflake_connector(path_credentials="./.credentials.json")
+    ctx = snowflake_connector(path_credentials=args.credentials)
     cs = ctx.cursor()
 
     if args.warehouse:
